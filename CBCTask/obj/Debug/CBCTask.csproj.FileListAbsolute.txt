@@ -1,0 +1,6 @@
+c:\users\803581\documents\visual studio 2012\Projects\CBCTask\CBCTask\bin\Debug\CBCTask.exe.config
+c:\users\803581\documents\visual studio 2012\Projects\CBCTask\CBCTask\bin\Debug\CBCTask.exe
+c:\users\803581\documents\visual studio 2012\Projects\CBCTask\CBCTask\bin\Debug\CBCTask.pdb
+c:\users\803581\documents\visual studio 2012\Projects\CBCTask\CBCTask\obj\Debug\CBCTask.csprojResolveAssemblyReference.cache
+c:\users\803581\documents\visual studio 2012\Projects\CBCTask\CBCTask\obj\Debug\CBCTask.exe
+c:\users\803581\documents\visual studio 2012\Projects\CBCTask\CBCTask\obj\Debug\CBCTask.pdb

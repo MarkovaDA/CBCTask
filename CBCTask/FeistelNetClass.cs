@@ -1,0 +1,248 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace FeistelNet
+{
+    class FeistelNetClass
+    {   
+        private const int BLOCK_SIZE = 8;//8 байт = 64 бита
+        private const int ROUNDS = 5;
+        private const UInt64 startKey = 12345;//начальный 64-битовый ключ
+        //шифрация блоков данных итеративно
+        public static UInt64[] FeistelEncrypt(UInt64[] plainText)
+        {
+            Console.WriteLine("Исходные данные");
+            for (int i = 0; i < plainText.Count(); i++) {
+                Console.WriteLine(plainText[i]);
+            }
+            Console.WriteLine("Шифрация");
+            var encryptedBlocks = new UInt64[plainText.Count()];
+            for (int i = 0; i < plainText.Count(); i++)
+            {
+                encryptedBlocks[i] = encryptBlock(plainText[i]);
+                Console.WriteLine(encryptedBlocks[i]);
+            }
+            return encryptedBlocks;
+        }
+        //дешифраця блоков данных итеративно
+        public static UInt64[] FeistelDecrypt(UInt64[] encryptedText)
+        {
+            Console.WriteLine("Дешифрация");
+            var decryptedBlocks = new UInt64[encryptedText.Count()];
+            for (int i = 0; i < encryptedText.Count(); i++)
+            {
+                decryptedBlocks[i] = decryptBlock(encryptedText[i]);
+                Console.WriteLine(decryptedBlocks[i]);
+            }
+            return decryptedBlocks;
+        }
+        //шифрация блока данных
+        public static UInt64 encryptBlock(UInt64 originalBlock)
+        {
+            byte[] bytes = GetBytes(originalBlock);
+            //два блока длиною по 32 бита
+            UInt32 leftPart = ToUInt32(bytes.Take(4).ToArray());
+            UInt32 rightPart = ToUInt32(bytes.Skip(4).Take(4).ToArray());
+            //каждый из блоков еще разбиваем на два подблока длиною в 16 бит
+            UInt16 onePart = ToUInt16(GetBytes(leftPart).Take(2).ToArray());
+            UInt16 twoPart = ToUInt16(GetBytes(leftPart).Skip(2).Take(2).ToArray());
+            UInt16 threePart = ToUInt16(GetBytes(rightPart).Take(2).ToArray());
+            UInt16 fourPart = ToUInt16(GetBytes(rightPart).Skip(2).Take(2).ToArray());
+            //прогонка раундов
+            for (int i = 0; i < ROUNDS; i++)
+            {
+                UInt32 roundKey = ror64(startKey, i * 8);
+                UInt16 f = RoundF(onePart, roundKey);
+                if (i < ROUNDS - 1)
+                {
+                    UInt16 tmp = onePart;
+                    onePart = (UInt16)(f ^ twoPart);
+                    twoPart = (UInt16)(f ^ threePart);
+                    threePart = (UInt16)(f ^ fourPart);
+                    fourPart = tmp;
+                }
+                else
+                {
+                    twoPart ^= f;
+                    threePart ^= f;
+                    fourPart ^= f;
+                }
+            }
+            //сливаем блоки по 16 бит в два блока по 32
+            UInt32 left32 = unionUint16_Blocks(onePart, twoPart);
+            //затем сливаем блоки по 32 в единый блок 64 бита
+            UInt32 right32 = unionUint16_Blocks(threePart, fourPart);
+            return unionUint32_Blocks(left32, right32);
+        }
+        //объединение блоков длиною 16 бит в один блок 32 бита
+        private static UInt32 unionUint16_Blocks(UInt16 left, UInt16 right)
+        {
+            UInt16[] parts = { left, right };
+            var unitedBytes = new byte[4];
+            int index = 0; int length = unitedBytes.Length;
+            int number = 2;
+            for (int i = 0; i < length; i++)
+            {
+                if (i % length == 2)
+                {
+                    ++index; number = 2;
+                }
+                unitedBytes[i] = BitConverter.GetBytes(parts[index])[--number];
+            }
+            return ToUInt32(unitedBytes);
+        }
+        //объединение блоков длиною 32 бит в один блок 64 бита
+        private static UInt64 unionUint32_Blocks(UInt32 left, UInt32 right)
+        {
+            UInt32[] parts = { left, right };
+            var unitedBytes = new byte[8];
+            int index = 0; int length = unitedBytes.Length;
+            int number = 4;
+            for (int i = 0; i < length; i++)
+            {
+                if (i % length == 4)
+                {
+                    ++index; number = 4;
+                }
+                unitedBytes[i] = BitConverter.GetBytes(parts[index])[--number];
+            }
+            return ToUInt64(unitedBytes);
+        }
+        //дешифрация блока данных
+        public static UInt64 decryptBlock(UInt64 originalBlock)
+        {
+            byte[] bytes = GetBytes(originalBlock);
+            UInt32 leftPart = ToUInt32(bytes.Take(4).ToArray());
+            UInt32 rightPart = ToUInt32(bytes.Skip(4).Take(4).ToArray());
+            //каждый из блоков еще разбиваем на два подблока длиною в 16 бит
+            UInt16 onePart = ToUInt16(GetBytes(leftPart).Take(2).ToArray());
+            UInt16 twoPart = ToUInt16(GetBytes(leftPart).Skip(2).Take(2).ToArray());
+            UInt16 threePart = ToUInt16(GetBytes(rightPart).Take(2).ToArray());
+            UInt16 fourPart = ToUInt16(GetBytes(rightPart).Skip(2).Take(2).ToArray());
+            //прогонка раундов
+            for (int i = ROUNDS - 1; i >= 0; i--)
+            {
+                UInt32 roundKey = ror64(startKey, i * 8);
+                UInt16 f = RoundF(onePart, roundKey);
+                if (i > 0)
+                {
+                    UInt16 tmp = onePart;
+                    onePart = (UInt16)(fourPart ^ f);
+                    fourPart = (UInt16)(threePart ^ f);
+                    threePart = (UInt16)(twoPart ^ f);
+                    twoPart = tmp;
+                }
+                else
+                {
+                    threePart ^= f;
+                    twoPart ^= f;
+                    fourPart ^= f;
+                }
+            }
+            UInt32 left32 = unionUint16_Blocks(onePart, twoPart);
+            UInt32 right32 = unionUint16_Blocks(threePart, fourPart);
+            return unionUint32_Blocks(left32, right32);
+        }
+
+        //разбитие строки на блоки данных длиною в 64 бит
+        public static UInt64[] GetBlocks(string text)
+        {   
+            var bytes = Encoding.ASCII.GetBytes(text);
+            //дополнение массива байт, если их число не кратное
+            int diff = text.Length % 8;
+            if (diff != 0)
+            {
+                byte[] temp = new byte[text.Length + (8 - diff)];
+                Array.Copy(bytes, temp, bytes.Length);
+                bytes = temp;
+            }
+            var blocksCount = (int)Math.Ceiling(bytes.Count() / (double)BLOCK_SIZE);
+            var result = new UInt64[blocksCount];
+            for (int i = 0; i < blocksCount; i++)
+            {
+                result[i] = ToUInt64(bytes.Skip(i * BLOCK_SIZE).Take(BLOCK_SIZE).ToArray());
+            }
+            return result;
+        }
+        //набор байт переводим в 64-битное число
+        public static UInt64 ToUInt64(byte[] bytes)
+        {
+            UInt64 result = 0;
+            for (int i = 0; i < 8; i++)
+            {
+                result += (UInt64)Math.Pow(256, 7 - i) * bytes[i];
+            }
+            return result;
+        }
+        //набор байт переводим в 32-битное число
+        public static UInt32 ToUInt32(byte[] bytes)
+        {
+            UInt32 result = 0;
+            for (int i = 0; i < 4; i++)
+            {
+                result += (UInt32)Math.Pow(256, 3 - i) * bytes[i];
+            }
+            return result;
+        }
+        //набор байт переводим в 16-битное число
+        public static UInt16 ToUInt16(byte[] bytes)
+        {
+            UInt16 result = 0;
+            result += (ushort)(bytes[0] * 256 + bytes[1]);
+            return result;
+        }
+        //воздействующая функция
+        public static UInt16 RoundF(UInt16 originalBlock, UInt32 roundKey)
+        {
+            UInt16 first = rol16(originalBlock, 9);
+            UInt16 second = (UInt16)~(ror32(roundKey, 11) & originalBlock);
+            return (UInt16)(first ^ second);
+        }
+        private static UInt32 ror32(UInt32 key, int n)
+        {
+            UInt32 t1, t2;
+            n = n % (sizeof(UInt32) * 8);
+            t1 = key >> n;
+            t2 = key << (sizeof(UInt32) * 8 - n);
+            return t1 | t2;
+        }
+        //процедура для генерации раундового ключа
+        private static UInt32 ror64(UInt64 key, int n)
+        {
+            UInt64 t1, t2;
+            n = n % (sizeof(UInt64) * 8);
+            t1 = key >> n;
+            t2 = key << (sizeof(UInt64) * 8 - n);
+            return (UInt32)(t1 | t2);//возвращаем половину ключа
+        }
+        private static UInt16 ror16(UInt16 a, int n)
+        {
+            UInt16 t1, t2;
+            n = n % (sizeof(UInt16) * 8);  // нормализуем n
+            t1 = (UInt16)(a >> n);   // двигаем а вправо на n бит, теряя младшие биты
+            t2 = (UInt16)(a << (sizeof(UInt16) * 8 - n)); // перегоняем младшие биты в старшие
+            return (UInt16)(t1 | t2);  // объединяем старшие и младшие биты
+        }
+        private static UInt16 rol16(UInt32 a, int n)
+        {
+            UInt16 t1, t2;
+            n = n % (sizeof(UInt16) * 8);  // нормализуем n
+            t1 = (UInt16)(a << n);   // двигаем а вправо на n бит, теряя младшие биты
+            t2 = (UInt16)(a >> (sizeof(UInt16) * 8 - n)); // перегоняем младшие биты в старшие
+            return (UInt16)(t1 | t2);  // объединяем старшие и младшие биты
+        }
+        //число переводим в байты
+        public static byte[] GetBytes(UInt64 originalBlock)
+        {
+            return BitConverter.GetBytes(originalBlock).Reverse().ToArray();
+        }
+        public static byte[] GetBytes(UInt32 originalBlock)
+        {
+            return BitConverter.GetBytes(originalBlock).Reverse().ToArray();
+        }
+
+    }
+}
